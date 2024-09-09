@@ -20,9 +20,9 @@ import (
 	"sync"
 	"time"
 
+	pb "cloud.google.com/go/datastore/apiv1/datastorepb"
 	"cloud.google.com/go/internal/trace"
 	gax "github.com/googleapis/gax-go/v2"
-	pb "google.golang.org/genproto/googleapis/datastore/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -403,6 +403,11 @@ func (c *Client) RunInTransaction(ctx context.Context, f func(tx *Transaction) e
 			return nil, err
 		}
 
+		// If this is the last attempt, exit without delaying.
+		if n+1 == settings.attempts {
+			return nil, err
+		}
+
 		// Check if error should be retried
 		code, errConvert := grpcStatusCode(retryErr)
 		if errConvert != nil && code == codes.ResourceExhausted {
@@ -571,7 +576,7 @@ func (t *Transaction) get(spanName string, keys []*Key, dst interface{}) (err er
 	if txnID != nil && err == nil {
 		t.setToInProgress(txnID)
 	}
-	return err
+	return t.client.processFieldMismatchError(err)
 }
 
 // Get is the transaction-specific version of the package function Get.
@@ -582,9 +587,9 @@ func (t *Transaction) get(spanName string, keys []*Key, dst interface{}) (err er
 func (t *Transaction) Get(key *Key, dst interface{}) (err error) {
 	err = t.get("cloud.google.com/go/datastore.Transaction.Get", []*Key{key}, []interface{}{dst})
 	if me, ok := err.(MultiError); ok {
-		return me[0]
+		return t.client.processFieldMismatchError(me[0])
 	}
-	return err
+	return t.client.processFieldMismatchError(err)
 }
 
 // GetMulti is a batch version of Get.
