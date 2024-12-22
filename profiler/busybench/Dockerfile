@@ -1,4 +1,4 @@
-FROM golang:1.23rc2-alpine3.20
+FROM golang:1.24rc1-alpine3.20
 
 WORKDIR /go/src/busybench
 
